@@ -71,7 +71,7 @@ proc flash_image { bin_file { do_erase 1 } { do_blank_check 0 } { do_verify 1 } 
 	}
 	
 	puts "Loading flash writer elf..."
-	init_flash_writer
+	init_flash_writer flash_writer.elf
 	
 	puts "Initializing flash..."
 	if { [flash_init] } {
@@ -164,8 +164,26 @@ proc init_flash_writer { {flash_writer_elf default} } {
     #
     puts "Getting communication variable (tcl_function_call)"
     set global_dict [print -dict &tcl_function_call]
-    set ::tcl_function_call_variable [dict get $global_dict &tcl_function_call]
-    set ::tcl_parameter_variable [expr $::tcl_function_call_variable + 4]
+    
+    if {![dict exists $global_dict &tcl_function_call]} {
+        error "ERROR: Key '&tcl_function_call' not found in global_dict"
+    }
+    
+    set raw_value [dict get $global_dict &tcl_function_call]
+    
+    # 将4个字节组合成一个32位地址
+    set bytes [split $raw_value " "]
+    set byte0 [expr {[lindex $bytes 0] & 0xFF}]
+    set byte1 [expr {[lindex $bytes 1] & 0xFF}]
+    set byte2 [expr {[lindex $bytes 2] & 0xFF}]
+    set byte3 [expr {[lindex $bytes 3] & 0xFF}]
+    
+    # 使用位运算组合字节（小端序）
+    set ::tcl_function_call_variable [expr {($byte3 << 24) | ($byte2 << 16) | ($byte1 << 8) | $byte0}]
+    puts "DEBUG: tcl_function_call_variable value (32-bit): 0x[format %08x $::tcl_function_call_variable]"
+    
+    set ::tcl_parameter_variable [expr {$::tcl_function_call_variable + 4}]
+    puts "DEBUG: tcl_parameter_variable value (32-bit): 0x[format %08x $::tcl_parameter_variable]"
     
     puts "Setting slice buffer (bin_slice_buffer)"
     set ::bin_slice_buffer      [_c_do $::TCL_FUNCTION_ID_GET_SLICE_BUFFER]
